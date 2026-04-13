@@ -26,7 +26,6 @@ def get_oriental_hour(time_str):
         else: return "해시(亥時)"
     except: return ""
 
-# API 설정
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
@@ -34,21 +33,12 @@ if not api_key:
 else:
     try:
         genai.configure(api_key=api_key)
-        
-        # [지침 준수: 자동 모델 탐색] 404 에러 원천 차단
-        # 서버에서 사용 가능한 모델 중 'gemini-1.5-flash'가 포함된 모델을 직접 찾습니다.
+        # 자동 모델 탐색 로직 적용
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), None)
-        
-        if not target_model:
-            # flash 모델을 못 찾을 경우 가장 성능이 좋은 첫 번째 모델 선택
-            target_model = available_models[0]
-            
+        target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), available_models[0])
         model = genai.GenerativeModel(target_model)
 
         st.title("AI 사주+수상(손금) 풀이")
-        
-        # 상단에 연결된 모델 정보 표시 (정상 연결 확인용)
         st.caption(f"시스템 연결 상태: {target_model} (Active)")
 
         st.subheader("👤 기본 정보 입력")
@@ -63,32 +53,50 @@ else:
             with c3: b_day = st.number_input("일", 1, 31, 1)
         with col2:
             current_year = date.today().year
-            age = st.number_input("현재 나이", value=(current_year - b_year + 1))
+            age = current_year - b_year + 1
+            st.info(f"현재 나이: {age}세")
             t_col1, t_col2 = st.columns([2, 1])
             with t_col1: birth_time = st.text_input("시간 (24시)", placeholder="10:30")
             calculated_hour = get_oriental_hour(birth_time)
-            with t_col2: st.text_input("해당 시", value=calculated_hour, disabled=True)
+            with t_col2: st.text_input("시", value=calculated_hour, disabled=True)
 
         st.divider()
         st.subheader("📸 사진 업로드")
-        uploaded_files = st.file_uploader("손톱 및 손바닥 사진 업로드", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("손톱/손등 사진 1장, 손바닥 사진 1장을 올려주세요.", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
 
         if uploaded_files:
             images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
             cols = st.columns(len(images))
             for i, img in enumerate(images): cols[i].image(img, use_column_width=True)
             
-            if st.button("통합 운명 리포트 생성"):
-                with st.spinner('사주와 수상을 통합 분석 중...'):
+            if st.button("전문 운명 리포트 생성"):
+                with st.spinner('사주와 수상을 통합하여 깊이 있게 분석 중입니다...'):
                     final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
                     try:
-                        prompt = f"성별:{gender}, 나이:{age}, 생년월일:{b_year}-{b_month}-{b_day}({calendar_type}), 시간:{final_time}. 손톱과 손금을 통합 분석하여 상세 리포트를 한국어로 작성하세요."
+                        # [핵심] 김창기 님 풀이 스타일을 재현하는 프롬프트
+                        prompt = f"""
+                        당신은 명리학과 수상학을 결합하여 개인의 인생을 꿰뚫어 보는 최고의 운명 전략가입니다. 
+                        보내드린 김창기 님의 사례처럼 매우 구체적이고 현장감 있는 분석을 제공하세요.
+
+                        [분석 대상 데이터]
+                        - 성별: {gender}
+                        - 나이: {age}세 (만 나이와 생년 정보 활용)
+                        - 생년월일: {b_year}년 {b_month}월 {b_day}일 ({calendar_type})
+                        - 태어난 시간: {final_time}
+
+                        [분석 지침 - 반드시 지킬 것]
+                        1. **'여름에 물가에 가지 마라' 같은 뻔한 소리는 금지입니다.** 대신 사진 속 손바닥의 구체적 특징(예: 굳은살의 위치, 구의 발달, 손금의 모양)을 언급하며 사주적 기운과 연결하세요.
+                        2. **성향 분석**: 손톱과 손등 사진을 보고 타고난 기질(자수성가형, 아티스트형 등)을 정의하세요.
+                        3. **현재와 미래**: {age}세를 기점으로 인생의 전환점이 어디인지, 어떤 운의 변화가 오는지 손금 유년법과 사주 대운을 결합해 설명하세요.
+                        4. **맞춤 조언**: 건강, 재물, 인간관계에 대해 '야전 사령관' 스타일로 명확한 솔루션을 제시하세요.
+                        5. **문체**: 정중하면서도 카리스마 있는 전문가의 톤을 유지하세요.
+                        """
                         response = model.generate_content([prompt] + images)
                         st.divider()
-                        st.subheader("🔍 분석 결과")
+                        st.subheader(f"🔍 {gender} {age}세 정밀 분석 리포트")
                         st.markdown(response.text)
                     except Exception as e:
-                        if "429" in str(e): st.warning("요청량이 많습니다. 1분 뒤 다시 시도하세요.")
+                        if "429" in str(e): st.warning("현재 요청이 많습니다. 사진 용량을 줄이거나 5분 뒤 다시 시도해 주세요.")
                         else: st.error(f"분석 오류: {e}")
     except Exception as e:
-        st.error(f"시스템 초기화 오류: {e}")
+        st.error(f"시스템 오류: {e}")
