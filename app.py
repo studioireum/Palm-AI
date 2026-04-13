@@ -33,7 +33,7 @@ if not api_key:
 else:
     try:
         genai.configure(api_key=api_key)
-        # 자동 모델 탐색 로직 적용
+        # 자동 모델 탐색
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), available_models[0])
         model = genai.GenerativeModel(target_model)
@@ -48,55 +48,63 @@ else:
             calendar_type = st.radio("달력", ["양력", "음력(평달)", "음력(윤달)"], horizontal=True)
             st.write("**생년월일**")
             c1, c2, c3 = st.columns(3)
-            with c1: b_year = st.number_input("연", 1900, 2100, 1980)
-            with c2: b_month = st.number_input("월", 1, 12, 1)
-            with c3: b_day = st.number_input("일", 1, 31, 1)
+            with c1: b_year = st.number_input("연", 1900, 2100, 1971)
+            with c2: b_month = st.number_input("월", 1, 12, 7)
+            with c3: b_day = st.number_input("일", 1, 31, 2)
+            
+            try:
+                t_date = date(b_year, b_month, b_day)
+                m_str = t_date.strftime('%B').upper()
+                st.success(f"선택: {m_str}({b_month}월) / {calendar_type}")
+            except: st.error("날짜 오류")
+
         with col2:
             current_year = date.today().year
             age = current_year - b_year + 1
             st.info(f"현재 나이: {age}세")
             t_col1, t_col2 = st.columns([2, 1])
-            with t_col1: birth_time = st.text_input("시간 (24시)", placeholder="10:30")
+            with t_col1: birth_time = st.text_input("시간 (24시)", value="10:30")
             calculated_hour = get_oriental_hour(birth_time)
             with t_col2: st.text_input("시", value=calculated_hour, disabled=True)
 
         st.divider()
         st.subheader("📸 사진 업로드")
-        uploaded_files = st.file_uploader("손톱/손등 사진 1장, 손바닥 사진 1장을 올려주세요.", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("사진을 올려주세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
 
         if uploaded_files:
             images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
             cols = st.columns(len(images))
             for i, img in enumerate(images): cols[i].image(img, use_column_width=True)
             
-            if st.button("전문 운명 리포트 생성"):
-                with st.spinner('사주와 수상을 통합하여 깊이 있게 분석 중입니다...'):
+            if st.button("운명 리포트 생성"):
+                with st.spinner('사주와 수상을 정밀 분석 중...'):
                     final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
                     try:
-                        # [핵심] 김창기 님 풀이 스타일을 재현하는 프롬프트
+                        # [톤앤매너 고정 & 데이터 격리 프롬프트]
                         prompt = f"""
-                        당신은 명리학과 수상학을 결합하여 개인의 인생을 꿰뚫어 보는 최고의 운명 전략가입니다. 
-                        보내드린 김창기 님의 사례처럼 매우 구체적이고 현장감 있는 분석을 제공하세요.
-
-                        [분석 대상 데이터]
+                        당신은 명리학과 수상학 전문가입니다. 
+                        
+                        [사용자 데이터 - 분석의 유일한 근거]
                         - 성별: {gender}
-                        - 나이: {age}세 (만 나이와 생년 정보 활용)
+                        - 나이: {age}세
                         - 생년월일: {b_year}년 {b_month}월 {b_day}일 ({calendar_type})
-                        - 태어난 시간: {final_time}
+                        - 시간: {final_time}
+                        - 사진: 업로드된 실제 이미지들
 
-                        [분석 지침 - 반드시 지킬 것]
-                        1. **'여름에 물가에 가지 마라' 같은 뻔한 소리는 금지입니다.** 대신 사진 속 손바닥의 구체적 특징(예: 굳은살의 위치, 구의 발달, 손금의 모양)을 언급하며 사주적 기운과 연결하세요.
-                        2. **성향 분석**: 손톱과 손등 사진을 보고 타고난 기질(자수성가형, 아티스트형 등)을 정의하세요.
-                        3. **현재와 미래**: {age}세를 기점으로 인생의 전환점이 어디인지, 어떤 운의 변화가 오는지 손금 유년법과 사주 대운을 결합해 설명하세요.
-                        4. **맞춤 조언**: 건강, 재물, 인간관계에 대해 '야전 사령관' 스타일로 명확한 솔루션을 제시하세요.
-                        5. **문체**: 정중하면서도 카리스마 있는 전문가의 톤을 유지하세요.
+                        [분석 지침]
+                        1. **절대 금기**: 이전 대화에 등장했던 '김창기'라는 이름이나 그 사람의 특징을 언급하지 마십시오.
+                        2. **톤앤매너(Style)**: 날카로운 통찰력을 가진 '야전 사령관' 스타일의 말투를 사용하세요. 뻔한 소리가 아닌 인생의 핵심을 찌르는 문체를 유지하세요.
+                        3. **내용(Content)**: 오직 위에 제공된 {age}세 사용자의 사주 정보와 업로드된 사진 속 손금/손톱 특징만 대조하여 리포트를 작성하세요.
+                        4. **구조**: 
+                           - 1단계: 타고난 기질과 성향 (사진 근거)
+                           - 2단계: 손금으로 보는 현재와 미래 (나이 근거)
+                           - 3단계: {age}세에 필요한 맞춤 전략과 조언
                         """
                         response = model.generate_content([prompt] + images)
                         st.divider()
-                        st.subheader(f"🔍 {gender} {age}세 정밀 분석 리포트")
+                        st.subheader("🔍 정밀 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        if "429" in str(e): st.warning("현재 요청이 많습니다. 사진 용량을 줄이거나 5분 뒤 다시 시도해 주세요.")
-                        else: st.error(f"분석 오류: {e}")
+                        st.error(f"분석 오류: {e}")
     except Exception as e:
         st.error(f"시스템 오류: {e}")
