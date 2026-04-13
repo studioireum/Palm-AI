@@ -26,7 +26,7 @@ def get_oriental_hour(time_str):
         else: return "해시(亥時)"
     except: return ""
 
-# API 설정 (가장 안전한 호출 방식)
+# API 설정
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
@@ -34,11 +34,23 @@ if not api_key:
 else:
     try:
         genai.configure(api_key=api_key)
-        # [해결책] 모델명을 절대 경로로 명시하여 404 에러 방지
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        
+        # [지침 준수: 자동 모델 탐색] 404 에러 원천 차단
+        # 서버에서 사용 가능한 모델 중 'gemini-1.5-flash'가 포함된 모델을 직접 찾습니다.
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), None)
+        
+        if not target_model:
+            # flash 모델을 못 찾을 경우 가장 성능이 좋은 첫 번째 모델 선택
+            target_model = available_models[0]
+            
+        model = genai.GenerativeModel(target_model)
 
         st.title("AI 사주+수상(손금) 풀이")
         
+        # 상단에 연결된 모델 정보 표시 (정상 연결 확인용)
+        st.caption(f"시스템 연결 상태: {target_model} (Active)")
+
         st.subheader("👤 기본 정보 입력")
         col1, col2 = st.columns(2)
         with col1:
@@ -49,24 +61,17 @@ else:
             with c1: b_year = st.number_input("연", 1900, 2100, 1980)
             with c2: b_month = st.number_input("월", 1, 12, 1)
             with c3: b_day = st.number_input("일", 1, 31, 1)
-            
-            try:
-                t_date = date(b_year, b_month, b_day)
-                m_str = t_date.strftime('%B').upper()
-                st.success(f"선택: {m_str}({b_month}월) / {calendar_type}")
-            except: st.error("날짜 확인")
-
         with col2:
             current_year = date.today().year
             age = st.number_input("현재 나이", value=(current_year - b_year + 1))
             t_col1, t_col2 = st.columns([2, 1])
             with t_col1: birth_time = st.text_input("시간 (24시)", placeholder="10:30")
             calculated_hour = get_oriental_hour(birth_time)
-            with t_col2: st.text_input("시", value=calculated_hour, disabled=True)
+            with t_col2: st.text_input("해당 시", value=calculated_hour, disabled=True)
 
         st.divider()
         st.subheader("📸 사진 업로드")
-        uploaded_files = st.file_uploader("사진을 업로드하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("손톱 및 손바닥 사진 업로드", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
 
         if uploaded_files:
             images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
@@ -74,20 +79,16 @@ else:
             for i, img in enumerate(images): cols[i].image(img, use_column_width=True)
             
             if st.button("통합 운명 리포트 생성"):
-                with st.spinner('분석 중...'):
+                with st.spinner('사주와 수상을 통합 분석 중...'):
                     final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
                     try:
-                        # 이미지를 포함한 분석 프롬프트
-                        contents = [
-                            f"성별:{gender}, 나이:{age}, 생년월일:{b_year}-{b_month}-{b_day}({calendar_type}), 시간:{final_time}. 손톱과 손금을 통합 분석하여 상세 리포트를 한국어로 작성하세요.",
-                            *images
-                        ]
-                        response = model.generate_content(contents)
+                        prompt = f"성별:{gender}, 나이:{age}, 생년월일:{b_year}-{b_month}-{b_day}({calendar_type}), 시간:{final_time}. 손톱과 손금을 통합 분석하여 상세 리포트를 한국어로 작성하세요."
+                        response = model.generate_content([prompt] + images)
                         st.divider()
                         st.subheader("🔍 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        if "429" in str(e): st.warning("요청 초과. 1분 뒤 시도하세요.")
+                        if "429" in str(e): st.warning("요청량이 많습니다. 1분 뒤 다시 시도하세요.")
                         else: st.error(f"분석 오류: {e}")
     except Exception as e:
-        st.error(f"시스템 오류: {e}")
+        st.error(f"시스템 초기화 오류: {e}")
