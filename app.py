@@ -1,8 +1,10 @@
 import streamlit as st
 import google.generativeai as genai
 from PIL import Image, ImageOps
+from datetime import date
 
-st.set_page_config(page_title="Palm AI Master Pro", layout="centered")
+# 1. UI 설정 및 제목 수정 (이모티콘 제거, 명칭 통일)
+st.set_page_config(page_title="AI 사주+수상(손금) 풀이", layout="centered")
 
 api_key = st.secrets.get("GEMINI_API_KEY")
 
@@ -13,23 +15,42 @@ if api_key:
         target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), available_models[0])
         model = genai.GenerativeModel(model_name=target_model)
 
-        st.title("✋ AI 사주-수상 통합 분석")
+        st.title("AI 사주+수상(손금) 풀이")
         
         st.subheader("👤 기본 정보 입력 (Personal Info)")
         col1, col2 = st.columns(2)
+        
         with col1:
             gender = st.radio("성별 (Gender)", ["남성 (Male)", "여성 (Female)"])
-            birth_date = st.date_input("생년월일 (Birth Date)")
+            # 2. 생년월일 입력 개선: 직접 입력 가능하도록 범위를 1900년~2100년으로 확대
+            birth_date = st.date_input(
+                "생년월일 (Birth Date)", 
+                value=date(1980, 1, 1),
+                min_value=date(1900, 1, 1), 
+                max_value=date(2100, 12, 31)
+            )
+            # 월 숫자와 영문 병기 표시
+            st.caption(f"선택일: {birth_date.strftime('%Y-%m-%d (%B)')}")
+
         with col2:
-            age = st.number_input("현재 나이 (Age)", min_value=1, max_value=120, value=40)
-            # [수정] 태어난 시간을 모를 경우를 대비한 안내 문구 추가 및 기본값 설정
-            birth_time = st.text_input("태어난 시간 (모를 경우 비워두세요)", placeholder="예: 오전 10시 또는 모름")
+            # 3. 나이 자동 계산 로직 (현재 연도 - 태어난 연도)
+            current_year = date.today().year
+            calculated_age = current_year - birth_date.year + 1
+            age = st.number_input("현재 나이 (Age)", value=calculated_age)
+            birth_time = st.text_input("태어난 시간 (모를 경우 비워두세요)", placeholder="예: 오전 10시 또는 진시")
 
         st.divider()
 
+        # 4. 사진 업로드 섹션 설명 보강 및 표기 통일
         st.subheader("📸 사진 업로드 (Upload Photos)")
-        st.info("1) 손톱/손등 사진과 2) 손바닥 사진을 함께 올리면 정확도가 올라갑니다.")
-        uploaded_files = st.file_uploader("사진 업로드", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        st.markdown("""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px;">
+        1) <b>손톱/손등 사진:</b> 타고난 기질, 건강 상태, 에너지의 강약을 분석합니다.<br>
+        2) <b>손바닥(손금) 사진:</b> 생명선, 지능선, 감정선을 통해 성격과 운명의 흐름을 분석합니다.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        uploaded_files = st.file_uploader("사진을 업로드하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
 
         if uploaded_files:
             images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
@@ -39,29 +60,26 @@ if api_key:
             
             if st.button("통합 운명 리포트 생성"):
                 with st.spinner('사주와 수상을 대조하여 분석 중...'):
-                    # 시간을 모를 경우에 대한 처리 로직
                     time_info = birth_time if birth_time else "모름(생략)"
-                    
                     try:
                         prompt = f"""
-                        당신은 명리학과 수상학 전문가입니다. 다음 정보를 통합 분석하세요.
-                        
-                        [사용자 데이터]
-                        - 성별: {gender} / 나이: {age}세
-                        - 생년월일: {birth_date} / 태어난 시간: {time_info}
-
-                        [중요 지침]
-                        1. **태어난 시간이 '{time_info}'인 경우**, 사주 원국에서 시주(時柱)를 제외한 삼주(三柱)와 수상 정보를 결합하여 분석하세요. 
-                        2. 시간이 누락되었다고 분석을 멈추지 말고, 손금의 특징을 더 비중 있게 다루어 부족한 정보를 보완하세요.
-                        3. 결과는 신뢰감 있는 전문가의 문체로, 핵심은 굵게 표시하여 리포트하세요.
+                        당신은 명리학과 수상학 전문가입니다.
+                        성별: {gender}, 나이: {age}세, 생년월일: {birth_date}, 태어난 시간: {time_info}
+                        제공된 사진에서 손톱/손등의 기질과 손바닥의 손금(생명/지능/감정선)을 결합하여 
+                        현재 시점의 운세를 한국어로 상세히 리포트해 주세요. 
+                        핵심 내용은 굵게 표시하고 전문적인 야전 사령관 스타일로 작성하세요.
                         """
                         response = model.generate_content([prompt] + images)
                         st.divider()
-                        st.subheader(f"🔍 {gender} {age}세 맞춤형 분석 결과")
+                        st.subheader(f"🔍 {gender} {age}세 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        st.error(f"분석 중 오류: {e}")
+                        # 429 에러 발생 시 사용자에게 친절하게 안내
+                        if "429" in str(e):
+                            st.error("현재 요청이 너무 많습니다. 1분만 기다렸다가 다시 '리포트 생성'을 눌러주세요.")
+                        else:
+                            st.error(f"분석 오류: {e}")
     except Exception as e:
-        st.error(f"시스템 초기화 오류: {e}")
+        st.error(f"시스템 오류: {e}")
 else:
     st.warning("Secrets에 GEMINI_API_KEY를 등록해주세요.")
