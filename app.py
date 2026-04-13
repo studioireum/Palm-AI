@@ -9,6 +9,7 @@ st.set_page_config(page_title="AI 사주+수상(손금) 풀이", layout="centere
 # --- 시간 -> 십이지시 변환 함수 ---
 def get_oriental_hour(time_str):
     try:
+        if not time_str or ':' not in time_str: return ""
         h, m = map(int, time_str.split(':'))
         total_minutes = h * 60 + m
         if 23 * 60 + 30 <= total_minutes or total_minutes < 1 * 60 + 30: return "자시(子時)"
@@ -25,14 +26,16 @@ def get_oriental_hour(time_str):
         else: return "해시(亥時)"
     except: return ""
 
+# API 키 가져오기
 api_key = st.secrets.get("GEMINI_API_KEY")
 
-if api_key:
+if not api_key:
+    st.warning("Secrets에 API_KEY를 등록해주세요.")
+else:
     try:
         genai.configure(api_key=api_key)
-        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        target_model = next((m for m in available_models if 'gemini-1.5-flash' in m), available_models[0])
-        model = genai.GenerativeModel(model_name=target_model)
+        # 모델 설정
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
         st.title("AI 사주+수상(손금) 풀이")
         
@@ -52,16 +55,16 @@ if api_key:
             try:
                 t_date = date(b_year, b_month, b_day)
                 m_str = t_date.strftime('%B').upper()
-                st.success(f"선택: **{m_str}({b_month}월) / {calendar_type}**")
+                st.success(f"선택: {m_str}({b_month}월) / {calendar_type}")
             except:
-                st.error("존재하지 않는 날짜입니다.")
+                st.error("날짜를 확인하세요.")
 
         with col2:
             current_year = date.today().year
             age = st.number_input("현재 나이 (Age)", value=(current_year - b_year + 1))
             t_col1, t_col2 = st.columns([2, 1])
             with t_col1:
-                birth_time = st.text_input("태어난 시간 (24시 기준)", placeholder="예: 10:30")
+                birth_time = st.text_input("시간 (24시 기준)", placeholder="예: 10:30")
             calculated_hour = get_oriental_hour(birth_time)
             with t_col2:
                 st.text_input("해당 시", value=calculated_hour, disabled=True)
@@ -85,19 +88,16 @@ if api_key:
                 cols[i].image(img, use_column_width=True)
             
             if st.button("통합 운명 리포트 생성"):
-                with st.spinner('사주와 수상을 통합 분석 중...'):
+                with st.spinner('분석 중...'):
                     final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
                     try:
-                        prompt = f"""
-                        수상 및 명리학 전문가로서 다음을 분석하세요.
-                        정보: {gender}, {age}세, {b_year}년 {b_month}월({m_str}) {b_day}일 {calendar_type}
-                        시간: {final_time}
-                        제공된 사진의 손톱 기질과 손바닥 손금을 결합하여 전문적인 분석 리포트를 한국어로 작성하세요.
-                        """
+                        prompt = f"""당신은 수상/명리 전문가입니다. {gender}, {age}세, {b_year}년 {b_month}월 {b_day}일({calendar_type}), 시간 {final_time} 정보를 바탕으로 사진 속 손톱/손금을 통합 분석하여 한국어로 상세 리포트를 작성하세요."""
                         response = model.generate_content([prompt] + images)
                         st.divider()
-                        st.subheader(f"🔍 {gender} {age}세 분석 결과")
+                        st.subheader("🔍 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        if "429" in str(e):
-                            st
+                        if "429" in str(e): st.warning("잠시 후 다시 시도하세요.")
+                        else: st.error(f"분석 오류: {e}")
+    except Exception as e:
+        st.error(f"시스템 오류: {e}")
