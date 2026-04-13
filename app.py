@@ -26,7 +26,7 @@ def get_oriental_hour(time_str):
         else: return "해시(亥時)"
     except: return ""
 
-# API 설정
+# API 설정 (가장 안전한 호출 방식)
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
@@ -34,7 +34,8 @@ if not api_key:
 else:
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # [해결책] 모델명을 절대 경로로 명시하여 404 에러 방지
+        model = genai.GenerativeModel('models/gemini-1.5-flash')
 
         st.title("AI 사주+수상(손금) 풀이")
         
@@ -53,7 +54,7 @@ else:
                 t_date = date(b_year, b_month, b_day)
                 m_str = t_date.strftime('%B').upper()
                 st.success(f"선택: {m_str}({b_month}월) / {calendar_type}")
-            except: st.error("존재하지 않는 날짜입니다.")
+            except: st.error("날짜 확인")
 
         with col2:
             current_year = date.today().year
@@ -65,7 +66,7 @@ else:
 
         st.divider()
         st.subheader("📸 사진 업로드")
-        uploaded_files = st.file_uploader("사진을 모두 선택하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("사진을 업로드하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
 
         if uploaded_files:
             images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
@@ -76,13 +77,17 @@ else:
                 with st.spinner('분석 중...'):
                     final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
                     try:
-                        prompt = f"성별:{gender}, 나이:{age}, 생년월일:{b_year}-{b_month}-{b_day}({calendar_type}), 시간:{final_time}. 이 정보를 바탕으로 사진 속 손톱과 손금을 통합 분석하여 한국어로 상세 리포트를 작성하세요."
-                        response = model.generate_content([prompt] + images)
+                        # 이미지를 포함한 분석 프롬프트
+                        contents = [
+                            f"성별:{gender}, 나이:{age}, 생년월일:{b_year}-{b_month}-{b_day}({calendar_type}), 시간:{final_time}. 손톱과 손금을 통합 분석하여 상세 리포트를 한국어로 작성하세요.",
+                            *images
+                        ]
+                        response = model.generate_content(contents)
                         st.divider()
                         st.subheader("🔍 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        if "429" in str(e): st.warning("요청량이 많습니다. 1분 뒤 다시 시도하세요.")
+                        if "429" in str(e): st.warning("요청 초과. 1분 뒤 시도하세요.")
                         else: st.error(f"분석 오류: {e}")
     except Exception as e:
-        st.error(f"시스템 초기화 오류: {e}")
+        st.error(f"시스템 오류: {e}")
