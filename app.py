@@ -3,7 +3,7 @@ import google.generativeai as genai
 from PIL import Image, ImageOps
 from datetime import date
 
-# 1. UI 설정 및 제목 (이모티콘 제거)
+# 1. UI 설정 및 제목
 st.set_page_config(page_title="AI 사주+수상(손금) 풀이", layout="centered")
 
 api_key = st.secrets.get("GEMINI_API_KEY")
@@ -22,28 +22,34 @@ if api_key:
         
         with col1:
             gender = st.radio("성별 (Gender)", ["남성 (Male)", "여성 (Female)"])
-            # 생년월일 선택 (1900년~2100년 직접 입력 가능)
-            birth_date = st.date_input(
-                "생년월일 (Birth Date)", 
-                value=date(1980, 1, 1),
-                min_value=date(1900, 1, 1), 
-                max_value=date(2100, 12, 31)
-            )
-            # [반영 확인] 월 표기: MAY(5월) 형태로 숫자와 영문 병기
-            m_str = birth_date.strftime('%B').upper() # 영문 월 (예: MAY)
-            m_num = birth_date.month # 숫자 월 (예: 5)
-            st.success(f"선택하신 달: **{m_str}({m_num}월)**")
+            
+            # [수정] 직접 입력을 위해 연/월/일 개별 입력창으로 변경
+            st.write("**생년월일 (Birth Date)**")
+            c1, c2, c3 = st.columns(3)
+            with c1: b_year = st.number_input("연(Year)", 1900, 2100, 1980)
+            with c2: b_month = st.number_input("월(Month)", 1, 12, 1)
+            with c3: b_day = st.number_input("일(Day)", 1, 31, 1)
+            
+            # [반영 확인] 월 표기: MAY(5월) 형태로 표시
+            # 임시 날짜 객체 생성하여 월 이름 추출
+            temp_date = date(b_year, b_month, b_day)
+            m_str = temp_date.strftime('%B').upper()
+            st.success(f"선택: **{m_str}({b_month}월)**")
 
         with col2:
-            # 나이 자동 계산 (한국식: 현재 연도 - 태생 연도 + 1)
-            c_year = date.today().year
-            calc_age = c_year - birth_date.year + 1
-            age = st.number_input("현재 나이 (Age)", value=calc_age)
-            birth_time = st.text_input("태어난 시간 (모를 경우 비워두세요)", placeholder="예: 오전 10시 또는 진시")
+            # 나이 자동 계산 (한국 나이: 현재 연도 - 태어난 연도 + 1)
+            current_year = date.today().year
+            age = st.number_input("현재 나이 (Age)", value=(current_year - b_year + 1))
+            
+            # [수정] 태어난 시간 예시 변경 (24시간 기준 + 시(時) 표기)
+            birth_time = st.text_input(
+                "태어난 시간 (모를 경우 비워두세요)", 
+                placeholder="예: 10:30 사시(巳時)"
+            )
 
         st.divider()
 
-        # 2. 사진 업로드 가이드 (지침 준수)
+        # 2. 사진 업로드 가이드 (설명 보강)
         st.subheader("📸 사진 업로드 (Upload Photos)")
         st.markdown("""
         <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px;">
@@ -61,28 +67,26 @@ if api_key:
                 cols[i].image(img, use_column_width=True)
             
             if st.button("통합 운명 리포트 생성"):
-                with st.spinner('사주와 수상을 대조하여 분석 중입니다...'):
-                    t_info = birth_time if birth_time else "모름(생략)"
+                with st.spinner('사주와 수상을 통합 분석 중...'):
+                    t_info = birth_time if birth_time else "모름"
                     try:
                         prompt = f"""
-                        당신은 명리학과 수상학 전문가입니다.
-                        성별: {gender}, 나이: {age}세, 생년월일: {birth_date} (달: {m_str})
+                        수상 및 명리학 전문가로서 다음을 분석하세요.
+                        성별: {gender}, 나이: {age}세, 생년월일: {b_year}년 {b_month}월({m_str}) {b_day}일
                         태어난 시간: {t_info}
-                        제공된 사진에서 손톱/손등의 기질과 손바닥의 손금(생명/지능/감정선)을 결합하여 
-                        현재 {age}세에 가장 중요한 사업/재물 전략을 한국어로 상세히 리포트해 주세요.
-                        핵심은 굵게 표시하고 신뢰감 있는 전문가의 문체로 작성하세요.
+                        제공된 사진에서 손톱/손등의 기질과 손바닥의 손금을 결합하여 
+                        현재 {age}세에 가장 필요한 삶의 전략을 한국어로 상세히 리포트해 주세요.
                         """
                         response = model.generate_content([prompt] + images)
                         st.divider()
                         st.subheader(f"🔍 {gender} {age}세 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        # 429 에러 대응 안내 강화
                         if "429" in str(e):
-                            st.warning("⚠️ 현재 요청량이 많습니다. 1분만 기다렸다가 다시 버튼을 눌러주세요. (구글 무료 할당량 제한)")
+                            st.warning("⚠️ 요청량이 많습니다. 1분 뒤 다시 시도해 주세요.")
                         else:
                             st.error(f"분석 오류: {e}")
     except Exception as e:
-        st.error(f"시스템 초기화 오류: {e}")
+        st.error(f"시스템 오류: {e}")
 else:
-    st.warning("Streamlit Settings > Secrets에 'GEMINI_API_KEY'를 등록해주세요.")
+    st.warning("Secrets에 API_KEY를 등록해주세요.")
