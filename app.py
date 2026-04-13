@@ -41,8 +41,6 @@ if api_key:
         
         with col1:
             gender = st.radio("성별 (Gender)", ["남성 (Male)", "여성 (Female)"])
-            
-            # [추가] 음력/양력/윤달 선택 라디오 버튼
             calendar_type = st.radio("달력 선택", ["양력", "음력(평달)", "음력(윤달)"], horizontal=True)
             
             st.write("**생년월일 (Birth Date)**")
@@ -56,16 +54,14 @@ if api_key:
                 m_str = t_date.strftime('%B').upper()
                 st.success(f"선택: **{m_str}({b_month}월) / {calendar_type}**")
             except:
-                st.error("존재하지 않는 날짜입니다. 다시 확인해주세요.")
+                st.error("존재하지 않는 날짜입니다.")
 
         with col2:
             current_year = date.today().year
             age = st.number_input("현재 나이 (Age)", value=(current_year - b_year + 1))
-            
             t_col1, t_col2 = st.columns([2, 1])
             with t_col1:
                 birth_time = st.text_input("태어난 시간 (24시 기준)", placeholder="예: 10:30")
-            
             calculated_hour = get_oriental_hour(birth_time)
             with t_col2:
                 st.text_input("해당 시", value=calculated_hour, disabled=True)
@@ -80,4 +76,28 @@ if api_key:
         </div>
         """, unsafe_allow_html=True)
         
-        uploaded_files = st.file_uploader("사진을 업로드하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True
+        uploaded_files = st.file_uploader("사진을 업로드하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+
+        if uploaded_files:
+            images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
+            cols = st.columns(len(images))
+            for i, img in enumerate(images):
+                cols[i].image(img, use_column_width=True)
+            
+            if st.button("통합 운명 리포트 생성"):
+                with st.spinner('사주와 수상을 통합 분석 중...'):
+                    final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
+                    try:
+                        prompt = f"""
+                        수상 및 명리학 전문가로서 다음을 분석하세요.
+                        정보: {gender}, {age}세, {b_year}년 {b_month}월({m_str}) {b_day}일 {calendar_type}
+                        시간: {final_time}
+                        제공된 사진의 손톱 기질과 손바닥 손금을 결합하여 전문적인 분석 리포트를 한국어로 작성하세요.
+                        """
+                        response = model.generate_content([prompt] + images)
+                        st.divider()
+                        st.subheader(f"🔍 {gender} {age}세 분석 결과")
+                        st.markdown(response.text)
+                    except Exception as e:
+                        if "429" in str(e):
+                            st
