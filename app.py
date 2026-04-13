@@ -34,70 +34,50 @@ if not api_key:
 else:
     try:
         genai.configure(api_key=api_key)
-        # 모델 설정
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # [수정] 가장 호환성이 높은 최신 모델명으로 고정
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
         st.title("AI 사주+수상(손금) 풀이")
         
-        st.subheader("👤 기본 정보 입력 (Personal Info)")
+        st.subheader("👤 기본 정보 입력")
         col1, col2 = st.columns(2)
-        
         with col1:
-            gender = st.radio("성별 (Gender)", ["남성 (Male)", "여성 (Female)"])
-            calendar_type = st.radio("달력 선택", ["양력", "음력(평달)", "음력(윤달)"], horizontal=True)
-            
-            st.write("**생년월일 (Birth Date)**")
+            gender = st.radio("성별", ["남성", "여성"], horizontal=True)
+            calendar_type = st.radio("달력", ["양력", "음력(평달)", "음력(윤달)"], horizontal=True)
+            st.write("**생년월일**")
             c1, c2, c3 = st.columns(3)
-            with c1: b_year = st.number_input("연(Year)", 1900, 2100, 1980)
-            with c2: b_month = st.number_input("월(Month)", 1, 12, 1)
-            with c3: b_day = st.number_input("일(Day)", 1, 31, 1)
-            
-            try:
-                t_date = date(b_year, b_month, b_day)
-                m_str = t_date.strftime('%B').upper()
-                st.success(f"선택: {m_str}({b_month}월) / {calendar_type}")
-            except:
-                st.error("날짜를 확인하세요.")
-
+            with c1: b_year = st.number_input("연", 1900, 2100, 1980)
+            with c2: b_month = st.number_input("월", 1, 12, 1)
+            with c3: b_day = st.number_input("일", 1, 31, 1)
         with col2:
             current_year = date.today().year
-            age = st.number_input("현재 나이 (Age)", value=(current_year - b_year + 1))
+            age = st.number_input("현재 나이", value=(current_year - b_year + 1))
             t_col1, t_col2 = st.columns([2, 1])
-            with t_col1:
-                birth_time = st.text_input("시간 (24시 기준)", placeholder="예: 10:30")
+            with t_col1: birth_time = st.text_input("시간 (24시)", placeholder="10:30")
             calculated_hour = get_oriental_hour(birth_time)
-            with t_col2:
-                st.text_input("해당 시", value=calculated_hour, disabled=True)
+            with t_col2: st.text_input("시", value=calculated_hour, disabled=True)
 
         st.divider()
-
-        st.subheader("📸 사진 업로드 (Upload Photos)")
-        st.markdown("""
-        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px;">
-        1) <b>손톱/손등 사진:</b> 타고난 기질과 건강 상태 분석<br>
-        2) <b>손바닥(손금) 사진:</b> 성격과 운명의 흐름 분석
-        </div>
-        """, unsafe_allow_html=True)
-        
-        uploaded_files = st.file_uploader("사진을 업로드하세요", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
+        st.subheader("📸 사진 업로드")
+        uploaded_files = st.file_uploader("손등/손바닥 사진 업로드", type=['jpg', 'jpeg', 'png'], accept_multiple_files=True)
 
         if uploaded_files:
             images = [ImageOps.exif_transpose(Image.open(f)) for f in uploaded_files]
             cols = st.columns(len(images))
-            for i, img in enumerate(images):
-                cols[i].image(img, use_column_width=True)
+            for i, img in enumerate(images): cols[i].image(img, use_column_width=True)
             
             if st.button("통합 운명 리포트 생성"):
                 with st.spinner('분석 중...'):
                     final_time = f"{birth_time} {calculated_hour}" if birth_time else "모름"
                     try:
-                        prompt = f"""당신은 수상/명리 전문가입니다. {gender}, {age}세, {b_year}년 {b_month}월 {b_day}일({calendar_type}), 시간 {final_time} 정보를 바탕으로 사진 속 손톱/손금을 통합 분석하여 한국어로 상세 리포트를 작성하세요."""
+                        prompt = f"{gender}, {age}세, {b_year}-{b_month}-{b_day}({calendar_type}), 시간 {final_time} 정보를 바탕으로 사진 속 손톱/손금을 통합 분석하여 한국어로 상세 리포트를 작성하세요."
+                        # [핵심] 이미지 분석을 위한 올바른 호출 방식
                         response = model.generate_content([prompt] + images)
                         st.divider()
                         st.subheader("🔍 분석 결과")
                         st.markdown(response.text)
                     except Exception as e:
-                        if "429" in str(e): st.warning("잠시 후 다시 시도하세요.")
+                        if "429" in str(e): st.warning("요청량이 많습니다. 1분 뒤 시도하세요.")
                         else: st.error(f"분석 오류: {e}")
     except Exception as e:
         st.error(f"시스템 오류: {e}")
